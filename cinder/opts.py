@@ -29,6 +29,8 @@ objects.register_all()
 from cinder.api import common as cinder_api_common
 from cinder.api.contrib import types_extra_specs as \
     cinder_api_contrib_typesextraspecs
+from cinder.api.contrib import domain_quota_sync as \
+    cinder_api_contrib_domainquotasync
 from cinder.api.middleware import auth as cinder_api_middleware_auth
 from cinder.api.views import versions as cinder_api_views_versions
 from cinder.backup import api as cinder_backup_api
@@ -255,6 +257,7 @@ def list_opts():
                 cinder_db_api.db_opts,
                 [cinder_db_base.db_driver_opt],
                 cinder_exception.exc_log_opts,
+                cinder_api_contrib_domainquotasync.region_opts,
                 cinder_image_glance.glance_opts,
                 cinder_image_glance.glance_core_properties_opts,
                 cinder_image_imageutils.image_helper_opts,
