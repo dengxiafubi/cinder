@@ -24,6 +24,8 @@ import mock
 import uuid
 import webob.exc
 
+
+from cinder.api.contrib import domain_quota_sync
 from cinder.api.contrib import quotas
 from cinder import context
 from cinder import db
@@ -198,7 +200,8 @@ class QuotaSetsControllerTest(QuotaSetsControllerTestBase):
         result = self.controller.show(self.req, fake.PROJECT_ID)
         self.assertDictEqual(make_body(), result)
 
-    def test_update(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update(self, mock_check_valid):
         body = make_body(gigabytes=2000, snapshots=15,
                          volumes=5, backups=5, tenant_id=None)
         result = self.controller.update(self.req, fake.PROJECT_ID, body)
@@ -208,7 +211,9 @@ class QuotaSetsControllerTest(QuotaSetsControllerTestBase):
         result = self.controller.update(self.req, fake.PROJECT_ID, body)
         self.assertDictEqual(body, result)
 
-    def test_update_subproject_not_in_hierarchy_non_nested(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_subproject_not_in_hierarchy_non_nested(self,
+                                                           mock_check_valid):
         # When not using nested quotas, the hierarchy should not be considered
         # for an update
         E = self.FakeProject(id=uuid.uuid4().hex, parent_id=None)
@@ -231,11 +236,13 @@ class QuotaSetsControllerTest(QuotaSetsControllerTestBase):
                          volumes=5, backups=5, tenant_id=None)
         self.controller.update(self.req, F.id, body)
 
+    @mock.patch.object(domain_quota_sync, 'check_valid')
     @mock.patch(
         'cinder.api.openstack.wsgi.Controller.validate_string_length')
     @mock.patch(
         'cinder.utils.validate_integer')
-    def test_update_limit(self, mock_validate_integer, mock_validate):
+    def test_update_limit(self, mock_validate_integer,
+                          mock_validate, mock_check_valid):
         mock_validate_integer.return_value = 10
 
         body = {'quota_set': {'volumes': 10}}
@@ -245,22 +252,26 @@ class QuotaSetsControllerTest(QuotaSetsControllerTestBase):
         self.assertTrue(mock_validate.called)
         self.assertTrue(mock_validate_integer.called)
 
-    def test_update_wrong_key(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_wrong_key(self, mock_check_valid):
         body = {'quota_set': {'bad': 'bad'}}
         self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
                           self.req, fake.PROJECT_ID, body)
 
-    def test_update_invalid_value_key_value(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_invalid_value_key_value(self, mock_check_valid):
         body = {'quota_set': {'gigabytes': "should_be_int"}}
         self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
                           self.req, fake.PROJECT_ID, body)
 
-    def test_update_invalid_type_key_value(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_invalid_type_key_value(self, mock_check_valid):
         body = {'quota_set': {'gigabytes': None}}
         self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
                           self.req, fake.PROJECT_ID, body)
 
-    def test_update_multi_value_with_bad_data(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_multi_value_with_bad_data(self, mock_check_valid):
         orig_quota = self.controller.show(self.req, fake.PROJECT_ID)
         body = make_body(gigabytes=2000, snapshots=15, volumes="should_be_int",
                          backups=5, tenant_id=None)
@@ -270,7 +281,8 @@ class QuotaSetsControllerTest(QuotaSetsControllerTestBase):
         new_quota = self.controller.show(self.req, fake.PROJECT_ID)
         self.assertDictEqual(orig_quota, new_quota)
 
-    def test_update_bad_quota_limit(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_bad_quota_limit(self, mock_check_valid):
         body = {'quota_set': {'gigabytes': -1000}}
         self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
                           self.req, fake.PROJECT_ID, body)
@@ -278,7 +290,8 @@ class QuotaSetsControllerTest(QuotaSetsControllerTestBase):
         self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
                           self.req, fake.PROJECT_ID, body)
 
-    def test_update_no_admin(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_no_admin(self, mock_check_valid):
         self.req.environ['cinder.context'].is_admin = False
         self.req.environ['cinder.context'].project_id = fake.PROJECT_ID
         self.req.environ['cinder.context'].user_id = 'foo_user'
@@ -286,12 +299,14 @@ class QuotaSetsControllerTest(QuotaSetsControllerTestBase):
                           self.controller.update, self.req, fake.PROJECT_ID,
                           make_body(tenant_id=None))
 
-    def test_update_without_quota_set_field(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_without_quota_set_field(self, mock_check_valid):
         body = {'fake_quota_set': {'gigabytes': 100}}
         self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
                           self.req, fake.PROJECT_ID, body)
 
-    def test_update_empty_body(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_empty_body(self, mock_check_valid):
         body = {}
         self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
                           self.req, fake.PROJECT_ID, body)
@@ -309,7 +324,10 @@ class QuotaSetsControllerTest(QuotaSetsControllerTestBase):
                          db.quota_usage_get_all_by_project(ctxt,
                                                            fake.PROJECT_ID))
 
-    def test_update_lower_than_existing_resources_when_skip_false(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_lower_than_existing_resources_when_skip_false(
+            self,
+            mock_check_valid):
         self._commit_quota_reservation()
         body = {'quota_set': {'volumes': 0},
                 'skip_validation': 'false'}
@@ -321,7 +339,10 @@ class QuotaSetsControllerTest(QuotaSetsControllerTestBase):
         self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
                           self.req, fake.PROJECT_ID, body)
 
-    def test_update_lower_than_existing_resources_when_skip_true(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_lower_than_existing_resources_when_skip_true(
+            self,
+            mock_check_valid):
         self._commit_quota_reservation()
         body = {'quota_set': {'volumes': 0},
                 'skip_validation': 'true'}
@@ -329,14 +350,18 @@ class QuotaSetsControllerTest(QuotaSetsControllerTestBase):
         self.assertEqual(body['quota_set']['volumes'],
                          result['quota_set']['volumes'])
 
-    def test_update_lower_than_existing_resources_without_skip_argument(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_lower_than_existing_resources_without_skip_argument(
+            self,
+            mock_check_valid):
         self._commit_quota_reservation()
         body = {'quota_set': {'volumes': 0}}
         result = self.controller.update(self.req, fake.PROJECT_ID, body)
         self.assertEqual(body['quota_set']['volumes'],
                          result['quota_set']['volumes'])
 
-    def test_delete(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_delete(self, mock_check_valid):
         result_show = self.controller.show(self.req, fake.PROJECT_ID)
         self.assertDictEqual(make_body(), result_show)
 
@@ -351,7 +376,10 @@ class QuotaSetsControllerTest(QuotaSetsControllerTestBase):
         result_show_after = self.controller.show(self.req, fake.PROJECT_ID)
         self.assertDictEqual(result_show, result_show_after)
 
-    def test_delete_with_allocated_quota_different_from_zero(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_delete_with_allocated_quota_different_from_zero(
+            self,
+            mock_check_valid):
         self.req.environ['cinder.context'].project_id = self.A.id
 
         body = make_body(gigabytes=2000, snapshots=15,
@@ -417,7 +445,8 @@ class QuotaSetControllerValidateNestedQuotaSetup(QuotaSetsControllerTestBase):
         self.project_by_id.update({self.E.id: self.E, self.F.id: self.F,
                                    self.G.id: self.G})
 
-    def test_validate_nested_quotas_no_in_use_vols(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_validate_nested_quotas_no_in_use_vols(self, mock_check_valid):
         # Update the project A quota.
         self.req.environ['cinder.context'].project_id = self.A.id
         quota = {'volumes': 5}
@@ -470,8 +499,10 @@ class QuotaSetControllerValidateNestedQuotaSetup(QuotaSetsControllerTestBase):
         self.req.params['fix_allocated_quotas'] = True
         self.controller.validate_setup_for_nested_quota_use(self.req)
 
+    @mock.patch.object(domain_quota_sync, 'check_valid')
     @mock.patch('cinder.db.quota_usage_get_all_by_project')
-    def test_validate_nested_quotas_in_use_vols(self, mock_usage):
+    def test_validate_nested_quotas_in_use_vols(
+            self, mock_usage, mock_check_valid):
         self._create_fake_quota_usages(
             {self.A.id: 1, self.B.id: 1, self.D.id: 0, self.C.id: 3,
              self.E.id: 0, self.F.id: 0, self.G.id: 0})
@@ -501,8 +532,10 @@ class QuotaSetControllerValidateNestedQuotaSetup(QuotaSetsControllerTestBase):
             self.controller.validate_setup_for_nested_quota_use,
             self.req)
 
+    @mock.patch.object(domain_quota_sync, 'check_valid')
     @mock.patch('cinder.db.quota_usage_get_all_by_project')
-    def test_validate_nested_quotas_quota_borked(self, mock_usage):
+    def test_validate_nested_quotas_quota_borked(
+            self, mock_usage, mock_check_valid):
         self._create_fake_quota_usages(
             {self.A.id: 1, self.B.id: 1, self.D.id: 0, self.C.id: 3,
              self.E.id: 0, self.F.id: 0, self.G.id: 0})
@@ -521,8 +554,10 @@ class QuotaSetControllerValidateNestedQuotaSetup(QuotaSetsControllerTestBase):
             self.controller.validate_setup_for_nested_quota_use,
             self.req)
 
+    @mock.patch.object(domain_quota_sync, 'check_valid')
     @mock.patch('cinder.db.quota_usage_get_all_by_project')
-    def test_validate_nested_quota_negative_limits(self, mock_usage):
+    def test_validate_nested_quota_negative_limits(
+            self, mock_usage, mock_check_valid):
         # TODO(mc_nair): this test case can be moved to Tempest once nested
         # quota coverage added
         self._create_fake_quota_usages(
@@ -641,7 +676,8 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
         self.assertRaises(webob.exc.HTTPForbidden, self.controller.show,
                           self.req, self.A.id)
 
-    def test_update_subproject_not_in_hierarchy(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_subproject_not_in_hierarchy(self, mock_check_valid):
         # Create another project hierarchy
         E = self.FakeProject(id=uuid.uuid4().hex, parent_id=None)
         F = self.FakeProject(id=uuid.uuid4().hex, parent_id=E.id)
@@ -663,7 +699,9 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
         self.assertRaises(webob.exc.HTTPForbidden,
                           self.controller.update, self.req, F.id, body)
 
-    def test_update_subproject_not_in_hierarchy_admin_context(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_subproject_not_in_hierarchy_admin_context(
+            self, mock_check_valid):
         E = self.FakeProject(id=uuid.uuid4().hex, parent_id=None,
                              is_admin_project=True)
         self.project_by_id[E.id] = E
@@ -684,7 +722,8 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
         self.assertRaises(webob.exc.HTTPForbidden,
                           self.controller.update, self.req, self.B.id, body)
 
-    def test_update_subproject(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_subproject(self, mock_check_valid):
         # Update the project A quota.
         self.req.environ['cinder.context'].project_id = self.A.id
         body = make_body(gigabytes=2000, snapshots=15,
@@ -717,7 +756,8 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
                          volumes=4, backups=4, tenant_id=None)
         self.controller.update(self.req, self.D.id, body)
 
-    def test_update_subproject_repetitive(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_subproject_repetitive(self, mock_check_valid):
         # Update the project A volumes quota.
         self.req.environ['cinder.context'].project_id = self.A.id
         body = make_body(gigabytes=2000, snapshots=15,
@@ -734,7 +774,9 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
             result = self.controller.update(self.req, self.B.id, body)
             self.assertDictEqual(body, result)
 
-    def test_update_subproject_with_not_root_context_project(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_subproject_with_not_root_context_project(
+            self, mock_check_valid):
         # Update the project A quota.
         self.req.environ['cinder.context'].project_id = self.A.id
         body = make_body(gigabytes=2000, snapshots=15,
@@ -749,7 +791,9 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
         self.assertRaises(webob.exc.HTTPForbidden, self.controller.update,
                           self.req, self.B.id, body)
 
-    def test_update_subproject_quota_when_parent_has_default_quotas(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_subproject_quota_when_parent_has_default_quotas(
+            self, mock_check_valid):
         # Since the quotas of the project A were not updated, it will have
         # default quotas.
         self.req.environ['cinder.context'].project_id = self.A.id
@@ -767,7 +811,8 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
                     'allocated': allocated, 'limit': limit}
         self.assertEqual(expected, show_res['quota_set'][resource])
 
-    def test_project_allocated_considered_on_reserve(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_project_allocated_considered_on_reserve(self, mock_check_valid):
         def _reserve(project_id):
             quotas.QUOTAS._driver.reserve(
                 self.req.environ['cinder.context'], quotas.QUOTAS.resources,
@@ -785,7 +830,8 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
         _reserve(self.A.id)
         self.assertRaises(exception.OverQuota, _reserve, self.A.id)
 
-    def test_update_parent_project_lower_than_child(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_update_parent_project_lower_than_child(self, mock_check_valid):
         # A's quota will be default of 10
         quota = {'volumes': 10}
         body = {'quota_set': quota}
@@ -794,7 +840,9 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.controller.update, self.req, self.A.id, body)
 
-    def test_project_delete_with_default_quota_less_than_in_use(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_project_delete_with_default_quota_less_than_in_use(
+            self, mock_check_valid):
         quota = {'volumes': 11}
         body = {'quota_set': quota}
         self.controller.update(self.req, self.A.id, body)
@@ -808,7 +856,9 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
                           self.req,
                           self.A.id)
 
-    def test_subproject_delete_with_default_quota_less_than_in_use(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_subproject_delete_with_default_quota_less_than_in_use(
+            self, mock_check_valid):
         quota = {'volumes': 1}
         body = {'quota_set': quota}
         self.controller.update(self.req, self.B.id, body)
@@ -823,7 +873,8 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
                           self.req,
                           self.B.id)
 
-    def test_subproject_delete(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_subproject_delete(self, mock_check_valid):
         self.req.environ['cinder.context'].project_id = self.A.id
 
         body = make_body(gigabytes=2000, snapshots=15, volumes=5, backups=5,
@@ -843,7 +894,9 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
         result_show_after = self.controller.show(self.req, self.A.id)
         self.assertDictEqual(result_show, result_show_after)
 
-    def test_subproject_delete_not_considering_default_quotas(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_subproject_delete_not_considering_default_quotas(
+            self, mock_check_valid):
         """Test delete subprojects' quotas won't consider default quotas.
 
         Test plan:
@@ -869,7 +922,8 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
 
         self.controller.delete(self.req, self.B.id)
 
-    def test_subproject_delete_with_child_present(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_subproject_delete_with_child_present(self, mock_check_valid):
         # Update the project A quota.
         self.req.environ['cinder.context'].project_id = self.A.id
         body = make_body(volumes=5)
@@ -884,7 +938,9 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
         self.assertRaises(webob.exc.HTTPBadRequest, self.controller.delete,
                           self.req, self.A.id)
 
-    def test_subproject_delete_with_child_updates_parent_allocated(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_subproject_delete_with_child_updates_parent_allocated(
+            self, mock_check_valid):
         quota = {'volumes': 5}
         body = {'quota_set': quota}
         self.controller.update(self.req, self.A.id, body)
@@ -902,7 +958,9 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
         self._assert_quota_show(self.A.id, res, allocated=0, limit=5)
         self._assert_quota_show(self.B.id, res, allocated=0, limit=-1)
 
-    def test_negative_child_limit_not_affecting_parents_free_quota(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_negative_child_limit_not_affecting_parents_free_quota(
+            self, mock_check_valid):
         quota = {'volumes': -1}
         body = {'quota_set': quota}
         self.controller.update(self.req, self.C.id, body)
@@ -913,7 +971,8 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
         self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
                           self.req, self.B.id, body)
 
-    def test_child_neg_limit_set_grandkid_zero_limit(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_child_neg_limit_set_grandkid_zero_limit(self, mock_check_valid):
         cur_quota_a = self.controller.show(self.req, self.A.id)
         self.assertEqual(10, cur_quota_a['quota_set']['volumes'])
 
@@ -928,7 +987,8 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
         quota['volumes'] = 0
         self.controller.update(self.req, self.D.id, body)
 
-    def test_grandkid_negative_one_limit_enforced(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_grandkid_negative_one_limit_enforced(self, mock_check_valid):
         quota = {'volumes': 2, 'gigabytes': 2}
         body = {'quota_set': quota}
         self.controller.update(self.req, self.A.id, body)
@@ -957,7 +1017,9 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
             self._assert_quota_show(self.C.id, res, reserved=1, limit=-1)
             self._assert_quota_show(self.D.id, res, reserved=1, limit=-1)
 
-    def test_child_update_affects_allocated_and_rolls_back(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_child_update_affects_allocated_and_rolls_back(self,
+                                                           mock_check_valid):
         quota = {'gigabytes': -1, 'volumes': 3}
         body = {'quota_set': quota}
         self.controller.update(self.req, self.A.id, body)
@@ -987,7 +1049,8 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
         self._assert_quota_show(self.B.id, 'volumes', allocated=2, limit=-1)
         self._assert_quota_show(self.B.id, 'gigabytes', allocated=1, limit=-1)
 
-    def test_negative_child_limit_reserve_and_rollback(self):
+    @mock.patch.object(domain_quota_sync, 'check_valid')
+    def test_negative_child_limit_reserve_and_rollback(self, mock_check_valid):
         quota = {'volumes': 2, 'gigabytes': 2}
         body = {'quota_set': quota}
         self.controller.update(self.req, self.A.id, body)
@@ -1019,9 +1082,11 @@ class QuotaSetsControllerNestedQuotasTest(QuotaSetsControllerTestBase):
         quota_d = self.controller.show(self.req, self.D.id)
         self.assertEqual(0, quota_d['quota_set']['volumes']['in_use'])
 
+    @mock.patch.object(domain_quota_sync, 'check_valid')
     @mock.patch('cinder.db.sqlalchemy.api._get_quota_usages')
     @mock.patch('cinder.db.quota_usage_get_all_by_project')
-    def test_nested_quota_set_negative_limit(self, mock_usage, mock_get_usage):
+    def test_nested_quota_set_negative_limit(self, mock_usage, mock_get_usage,
+                                             mock_check_valid):
         # TODO(mc_nair): this test should be moved to Tempest once nested quota
         # coverage is added
         fake_usages = {self.A.id: 1, self.B.id: 1, self.D.id: 2, self.C.id: 0}

@@ -18,6 +18,7 @@ import webob
 
 from oslo_utils import strutils
 
+from cinder.api.contrib import domain_quota_sync
 from cinder.api import extensions
 from cinder.api.openstack import wsgi
 from cinder import db
@@ -308,6 +309,12 @@ class QuotaSetsController(wsgi.Controller):
         # values are valid and we can iterate and update them all in one shot
         # without having to worry about rolling back etc as we have done
         # the validation up front in the 2 loops above.
+        project_quotas = self._get_quotas(context, target_project_id)
+        domain_quota_sync.check_valid(context,
+                                      target_project_id,
+                                      valid_quotas.copy(),
+                                      project_quotas.copy())
+
         for key, value in valid_quotas.items():
             try:
                 db.quota_update(context, target_project_id, key, value)
